@@ -2,3 +2,82 @@ libqtlua-2.0_MSVC2005
 =====================
 
 This is a help-file for those who have trouble in compiling QtLua 2.0 using Visual Studio 2005.
+
+
+
+-----------------------------------------------------
+CMake issues !!!
+-----------------------------------------------------
+All that is mentioned in the following lines applies to EACH CMakeLists-File you can find.
+
+#1
+Change every 'QT5[...]' directive to 'QT4[...]'. E.g. QT5_USE_MODULES(...) has to be changed to QT4_USE_MODULES(...).
+
+#2
+In 'QT4_USE_MODULES( <target> [...] Widgets [...])' replace the 'Widgets' module with the 'Gui' module (all the other modules remain unchanged).
+These changes might have their origins in the changes between Qt versions 4.x.x and 5.x.x: Qt4 still had the Widgets related stuff in the Gui-namespace.
+Since Qt5, Widgets has been extracted and therefore is now accessible without including Gui first.
+
+-----------------------------------------------------
+Visual Studio 2005 related stuff follows here !!!
+-----------------------------------------------------
+#3
+Change each '#warning <msg>' directive to '#pragma message("<msg>")'. This must be done because Visual Studio does not know about a pre-processor-directive called 'warning'.
+
+#4
+qtlualuamodel.hh: line 180:
+InitialSortOrderRole -> this is not defined in Qt-namespace unless you have at least Qt4.8
+
+#5
+Change each _uint64_t to __int64 for this is the correct type specifier in VC++.
+
+#6
+This construct:
+      QTLUA_THROW(QtLua::Method, "Wrong number of arguments for the `%' QMetaMethod.",
+  #if QT_VERSION < 0x050000
+       .arg(mm.signature()));
+  #else
+       .arg(mm.methodSignature()));
+  #endif
+Is illegal for VC++-standard. Just copy the 'QTLUA_THROW(...)' expression and paste it in front of each line inside the compiler directives; e.g.:
+  #if QT_VERSION < 0x050000
+		 QTLUA_THROW(QtLua::Method, "Wrong number of arguments for the `%' QMetaMethod.",.arg(mm.signature()));
+  #else
+
+#7
+In qtluamethod.cc rename one of the variables in line 87:
+  foreach (const QByteArray &pt, pt)
+VC++ will not allow that. I just changed the first argument 'pt' to 'p' because this is a local identifier (second argument is declared some lines above and I did not want to search for
+other occurences in the following code). After changing this variable I had also to change one further line inside the foreach-loop.
+
+#8
+Delete each occurance of "__attribute__", because this is GNU-stuff! Visual Studio will not accept this.
+See: http://social.msdn.microsoft.com/Forums/vstudio/en-US/9121c9f9-c816-4959-9014-a6fd277479c2/how-to-force-ms-visual-c-to-use-gccs-attribute-keyword?forum=vcgeneral
+
+#9
+in qtluatabletreemodel.cc (37): change '__func__' to '__FUNCTION__' (correct for Visual Studio 2005)
+in qtluatablegridmodel.cc (37): change '__func__' to '__FUNCTION__' (correct for Visual Studio 2005
+(if there are more of these '__func__'-directives I did not mention, change them, too!)
+
+#10
+Since it's not allowed in C++ to define arrays with a non-constant size specifier, the following expression in qtluaqtlib.cc (615) will throw an error:
+  QAction *a[args.size()];
+You must do the following:
+  1) Add a '#include<vector>' directive
+  2) Change the line above to: 'std::vector<QAction*> a(args.size());'
+This is it. For a vector, the '[]' and '=' operators are defined in the same way than for an array. So in the following lines, the expression:
+  a[i] = args[i].to_qobject_cast<QAction>();
+is valid and can remain as is.
+
+#11
+To export all necessary functions and objects, one needs to add some '__declspec(dllexport)' in front of those functions and objects:
+  1) Go to the definition of 'QTLUA_FUNCTION_DECL' and add the '__declspec(dllexport)' in front of the class-name
+  2) Compile a project referencing qtlua.lib (e.g. 'qtlua_app'-project) and find out, which unresolved externals there are.
+I solved that 'declspec'-issue in the way that I did the following:
+  #ifdef qtlua_EXPORTS
+    #define QTLUA_API __declspec(dllexport)
+  #else
+    #define QTLUA_API __declspec(dllimport)
+  #endif
+'qtlua_EXPORTS' is only defined in project 'qtlua'; i.e. a project including the qtlua.lib won't have that define. I pasted the 'QTLUA_API'-define in front of each 'unresolved external' and
+was able to eliminate the linker-errors totally.
